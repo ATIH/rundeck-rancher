@@ -1,50 +1,120 @@
+<!-- START doctoc generated TOC please keep comment here to allow auto update -->
+<!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
+**Table of Contents**  *generated with [DocToc](https://github.com/thlorenz/doctoc)*
+
+- [Rundeck for Rancher](#rundeck-for-rancher)
+  - [Getting started](#getting-started)
+    - [Requirements](#requirements)
+    - [Installation](#installation)
+    - [Configuration](#configuration)
+    - [Use it](#use-it)
+      - [Commande execution](#commande-execution)
+  - [Notes :](#notes-)
+    - [General](#general)
+    - [Rancher container file copier](#rancher-container-file-copier)
+    - [Rancher trigger run-once container](#rancher-trigger-run-once-container)
+  - [Links:](#links)
+  - [Merge requests](#merge-requests)
+
+<!-- END doctoc generated TOC please keep comment here to allow auto update -->
+
 # Rundeck for Rancher
 
-Dockerfile for Rundeck with custom python plugins for making Rundeck talk to the Rancher API.
-Also installs Rundeck notification plugin for Slack.
+This plugin is based on ["kallqvist/rundeck-rancher" work](https://github.com/kallqvist/rundeck-rancher).
 
-#### EXPERIMENTAL
-I run this in production myself for simple scheduling and backup jobs and it haven't failed me yet.
-With that said; I use this at my own risk, you'll have to use it at your own!
+The goal here is to create a rundeck plugin able to :
+- [x] Run with rundeck directly (running, or not, in a container).
+- [x] Using Rancher Rest-API and websockets to execute bash commands in already running containers (as returned by ResourceModelSource plugin).
+- [x] Run command into container even if tty is activated.
+- [x] Connect a job to several rancher environments
+- [ ] Trigger a "start-once" container
+- [ ] Send/Run file/script into container
 
-##### TTY must be disabled in Rancher for script execution or triggering of run-once service to function!
-Plugins will raise exceptions otherwise but it might not be immediately obvious why it's doing that.
+## Getting started
+### Requirements
+- Tested on Rundeck 2.6.11-1
+- Config and API keys specific to your Rancher installation.
+- `/bin/sh` need to be present in the container.
+- Some python librairies installed on your rundeck server :
+ - websocket-client (>=0.37.0)
+ - requests (>=2.12.4)
+ - python-dateutil (>=2.5.3)<br>
+(something like : apt-get install python-websocket python-requests python-dateutil)
 
-### Getting started
-- For pre-built image head over to [DockerHub](https://hub.docker.com/r/kallqvist/rundeck-rancher/)
-- Requires config and API keys specific to your Rancher installation.
-- Check attached [docker-compose.yml](https://github.com/kallqvist/rundeck-rancher/blob/master/docker-compose.yml) for required config and how to run with persistant SQL backing store.
-```
-docker-compose up
-# Direct your browser to http://127.0.0.1:4440
-# Default username and password for Rundeck is admin / admin
-```
+### Installation
+- Download as `.zip` the `src` directory
+- Rename it as `rancher-plugin.zip`.
+- Place it in `$RDECK_BASE/libext/`.
 
-## Rundeck plugins in this repo:
-#### Rancher resource collector
-- Using the Rancher API to fetch containers from a given Rancher environment ID and returning them as nodes to Rundeck.
-- Can filter on Rancher stack name using a regex pattern.
-- Can also filter containers to only return the first container from services in cases where service scale in Rancher is greater than one.
+### Configuration
+- add a new `Resource Model Source` in your projet configuration : <br>
+(You need to adapte the source number "1" according to your project) configuration
+ - `resources.source.1.type=rancher-resources`
+ The rancher-plugin resources model definition.
 
-#### Rancher container script executor
-- Using Rancher Rest-API and websockets to execute bash commands in already running containers (as returned by ResourceModelSource plugin).
-- Will raise python Exception if any stderr output is found during websocket command execution to abort Rundeck job.
+ - `resources.source.1.config.cattle_access_key=0123456789AABBCCDDEE`<br>
+ Your acces key to connect to the rancher API
 
-#### Rancher container file copier
-- TBD, not yet functional!
-- Seriously, don't use this yet!
-- It will raise Exceptions...
+ - `resources.source.1.config.cattle_config_url=https\://myrancher.home/v1`<br>
+ Mind the "\" before ":"<br>
+ You can use API v1 or v2-beta
 
-#### Rancher trigger run-once container
-- Using the Rancher Rest-API to trigger a run of a Rancher start-once service.
-- Using Rancher event listener and logs websockets for parsing log output.
-- Will raise python Exception if any stderr output is found in logs from start-once service run.
+ - `resources.source.1.config.cattle_secret_key=azertyuiopqsdfghjklmwxcvbn123456798000`
+ Your secret key to connect to the rancher API
+
+ - `resources.source.1.config.environments_ids=1a11029,1a11070,1a11082`<br>
+ Your different environments IDs to search in (comma separated).
+
+ - `resources.source.1.config.limit_one_container=false`<br>
+ Only retrieve one container from earch environment ID.
+
+ - `resources.source.1.config.stack_filter=my_super_stack`<br>
+ Restrict containers discovery to a specific stack.
 
 
-### Links:
+
+- Configure a new `Node Executor` method : <br>
+(You need to specify the accound used by the plugin to connect and run command through rancher's API)
+ - `project.plugin.NodeExecutor.rancher-executor.cattle_access_key=0987654321EECCDDBBAA`<br>
+ Your acces key to connect to the rancher API. Same or different as the resources source
+
+ - `project.plugin.NodeExecutor.rancher-executor.cattle_secret_key=gAbmufoxW753PktyqKbcs4gjUMfJWRK4YYzwXLso`<br>
+ Your secret key to connect to the rancher API. Same or different as the resources source
+
+### Use it
+#### Commande execution
+- Add a step `Command` to your workflow.
+- Specify you command as usual (ex: /bin/ls /tmp)
+
+- It's something good to filter nodes with properties like : `type: container`, `state: running` and even `environment_name: something`
+
+- if needed, you can add 2 options to your job definition :
+ - retry_attemp (default 5)<br>
+ How many times rundeck should check if your command have finished.
+
+ - retry_interval (default 30)<br>
+ How long should rundeck wait between each check (in second).
+
+Your command will be sent to the container, when rundeck will check until it finishes.
+
+At the end, you will get a log containing all stdout and stderr at once.<br>
+All stderr intries are prefixed with "ERROR - ".
+
+The exit code of your command will be send to rundeck.
+
+## Notes :
+### General
+- Providers for "node-executor" and "file-copier" are stored in the node attributes.
+
+### Rancher container file copier
+- Not tested, do not use it.
+
+### Rancher trigger run-once container
+- Not tested, do not use it.
+
+## Links:
 - [Rundeck](http://rundeck.org/)
 - [Rancher](http://rancher.com/rancher/)
-- [Rundeck Slack plugin](https://github.com/higanworks/rundeck-slack-incoming-webhook-plugin)
 
-### Merge requests
-- Are very much welcome over at [GitHub](https://github.com/kallqvist/rundeck-rancher)!
+## Merge requests
+- Do not hesitate to contribute.
