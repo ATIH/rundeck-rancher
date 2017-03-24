@@ -15,8 +15,6 @@ import re
 
 from _shared import *
 
-
-seen_logs_md5 = []
 def parse_logs(message, newer_than_timestamp=None):
     # sometimes we get single lines, sometimes we get all the logs at once...
     string_buf = StringIO.StringIO(message)
@@ -72,6 +70,11 @@ class ErrorLogger(logging.StreamHandler):
         raise Exception(msg)
     pass
 
+
+def check_os_env(var, txt):
+    if var is None or len(var) == 0:
+        raise ValueError(txt)
+
 log_handler = ErrorLogger()
 logger = logging.getLogger('websocket')
 logger.setLevel(logging.ERROR)
@@ -79,21 +82,35 @@ logger.addHandler(log_handler)
 log_re_pattern = r"^(\d*)\s+?(.*?Z)\s?(.*)?$"
 
 # todo: remove this when rundeck bug is resolved
-cattle_config = json.load(open("/rancher-auth-workaround.json"))
-api_base_url = cattle_config['host'] # os.environ['CATTLE_CONFIG_URL']
-api_access_key = cattle_config['access_key'] #  os.environ['CATTLE_ACCESS_KEY']
-api_secret_key = cattle_config['secret_key'] #  os.environ['CATTLE_SECRET_KEY']
+#cattle_config = json.load(open("/rancher-auth-workaround.json"))
+
+#api_base_url = cattle_config['host'] # os.environ['CATTLE_CONFIG_URL']
+#api_access_key = cattle_config['access_key'] #  os.environ['CATTLE_ACCESS_KEY']
+#api_secret_key = cattle_config['secret_key'] #  os.environ['CATTLE_SECRET_KEY']
+
+#print os.environ
+
+try:
+    api_base_url = os.environ.get('RD_CONFIG_CATTLE_CONFIG_URL')
+    check_os_env(api_base_url, "Cattle URL is not set")
+except ValueError:
+    api_base_url = os.environ.get('RD_NODE_RANCHER_URL')
+    check_os_env(api_base_url, "Cattle or Rancher URL is not set")
+
+api_access_key = os.environ.get('RD_CONFIG_CATTLE_ACCESS_KEY')
+check_os_env(api_access_key,"Cattle acces key is not set")
+
+api_secret_key = os.environ.get('RD_CONFIG_CATTLE_SECRET_KEY')
+check_os_env(api_secret_key,"Cattle secret key is not set")
+
 api_auth = HTTPBasicAuth(api_access_key, api_secret_key)
+
 ws_auth_header = {'Authorization': "Basic {}".format(base64.b64encode("{}:{}".format(api_access_key, api_secret_key)))}
 
 environment_id = os.environ.get('RD_NODE_ENVIRONMENT_ID', '')
-if len(environment_id) == 0:
-    raise Exception("Can't run, environment ID is not set!")
+check_os_env(environment_id,"Can't run, environment ID is not set!")
 
 node_id = os.environ.get('RD_NODE_ID', '')
-if len(node_id) == 0:
-    raise Exception("Can't run, node ID is not set!")
+check_os_env(node_id,"Can't run, node ID is not set!")
 
 node_tty = (os.environ.get('RD_NODE_TTY', 'true').lower() == 'true')
-if node_tty == True:
-    raise Exception("Can't run, TTY must be disabled in rancher settings")

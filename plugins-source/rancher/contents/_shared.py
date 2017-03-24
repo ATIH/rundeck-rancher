@@ -1,3 +1,6 @@
+"""
+q
+"""
 # http://www.saltycrane.com/blog/2009/11/trying-out-retry-decorator-python/
 
 from functools import wraps
@@ -12,18 +15,31 @@ _default_retry_attempts = 10
 
 
 def log(message):
-    print(message)
+    """
+    q
+    """
+    print message
     sys.stdout.flush()
 
 
 def retry(interval=_default_retry_interval, attempts=_default_retry_attempts):
+    """
+    q
+    """
     def deco_retry(func):
+        """
+        q
+        """
         @wraps(func)
         def retry_wrapper(*args, **kwargs):
+            """
+            q
+            """
             attempt = 0
             while True:
                 try:
                     return func(*args, **kwargs)
+                #pylint: disable=w0703
                 except Exception as e:
                     attempt += 1
                     if attempt > attempts and attempts >= 0:

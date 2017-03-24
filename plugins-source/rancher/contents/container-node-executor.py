@@ -1,129 +1,151 @@
-from websocket import create_connection
-import websocket
-import StringIO
-import requests
-import hashlib
+"""
+execute command in container
+"""
+
+#import StringIO
 import base64
+import hashlib
 import os
-import re
+import requests
+import websocket
+#import re
+#pylint: disable=W0401
 from _containers_shared import *
 
+working_dir = '/tmp'
+leadingrubbish = 8
+rundeck_retry_attempt = int(os.environ.get('RD_OPTION_RETRY_ATTEMPT', 5))
+rundeck_retry_interval = int(os.environ.get('RD_OPTION_RETRY_INTERVAL', 5))
 
 
-@retry()
-def request_execute_token():
-    api_data = {
-        "attachStdin": False,
-        "attachStdout": True,
-        "command": [
-            "/bin/bash",
-            "-c",
-            'echo $$ > /tmp/{rundeck_job_exec_id}.pid; {{ {{ {bash_script}; }} > >( while read line; do echo 1 $(date -u +%Y-%m-%dT%H:%M:%SZ) ${{line}}; done ); }} 2> >( while read line; do echo 2 $(date -u +%Y-%m-%dT%H:%M:%SZ) ${{line}}; done ) | tee /tmp/{rundeck_job_exec_id}.out'.format(rundeck_job_exec_id=rundeck_job_exec_id, bash_script=bash_script)
-        ],
-        "tty": False
-    }
+#need to create a nice class instead of this ugly global var
+data_recv = None
+
+
+def request_token(api_data):
+    """
+    request token to run command through rancher
+    """
     api_url = "{}/containers/{}?action=execute".format(api_base_url, node_id)
     api_res = requests.post(api_url, auth=api_auth, json=api_data)
     api_res_json = api_res.json()
     # log(json.dumps(api_res_json, indent=2))
     if not api_res.status_code < 300:
         raise Exception("Failed to create 'execute script' socket token: API error, code \"{} ({})\"!".format(api_res_json['code'], api_res_json['status']))
+
     return api_res_json
 
+def on_message(ws, message):
+    global data_recv
+    data_recv += base64.b64decode(message)
 
-# this websocket will execute the command, we don't want to use retry here!
-def execute_command():
-    execute_token_res = request_execute_token()
-    ws_url_execute = "{}?token={}".format(execute_token_res['url'], execute_token_res['token'])
-    ws_exec = websocket.WebSocketApp(ws_url_execute,
-                                     on_message=execute_on_message,
-                                     header=ws_auth_header)
-    ws_exec.run_forever()
+def use_token(token, wait_for_data=False):
+    """
+    use token
+    """
 
+    global data_recv
 
-@retry()
-def request_pid_check_token():
-    api_data = {
-        "attachStdin": False,
-        "attachStdout": True,
-        "command": [
-          "/bin/sh",
-          "-c",
-          'if ps -p $(cat /tmp/{rundeck_job_exec_id}.pid) > /dev/null; then echo 1; else echo 0; fi'.format(rundeck_job_exec_id=rundeck_job_exec_id)
-        ],
-        "tty": False
-    }
-    api_url = "{}/containers/{}?action=execute".format(api_base_url, node_id)
-    api_res = requests.post(api_url, auth=api_auth, json=api_data)
-    api_res_json = api_res.json()
-    if not api_res.status_code < 300:
-        raise Exception("Can't create 'PID state' socket token, code \"{} ({})\"!".format(api_res_json['code'], api_res_json['status']))
-    return api_res_json
+    #http://docs.rancher.com/rancher/v1.4/en/api/v1/
+    ws_url_execute = "{}?token={}".format(token['url'], token['token'])
 
+    if wait_for_data:
+        data_recv = ''
+        ws_exec = websocket.WebSocketApp(ws_url_execute,
+                                        on_message = on_message)
+                                        #on_error = on_error,
+                                        #on_close = on_close)
+        ws_exec.run_forever()
 
+        #https://github.com/rancher/rancher/issues/8078
+        data_recv = data_recv[leadingrubbish:]
 
-@retry(attempts=-1, interval=30)  # -1 = try forever
-def execute_pid_check():
-    pid_check_token_res = request_pid_check_token()
-    pid_check_result = 1
-    ws_url_pid_check = "{}?token={}".format(
-        pid_check_token_res['url'],
-        pid_check_token_res['token']
-        )
-    ws = create_connection(ws_url_pid_check)
-    pid_check_response = base64.b64decode(ws.recv())
-    ws.close()
-    try:
-        pid_check_result = int(pid_check_response)
-    except ValueError:
-        log("[ W ] Failed to read PID state: '{}'".format(pid_check_response.strip()))
-        pid_check_result = -1
-    if not pid_check_result == 0:
-        raise Exception(
-            "Process have not yet stopped "
-            "in container (PID state {})".format(pid_check_result))
+    else:
+        ws_exec = websocket.create_connection(ws_url_execute)
+        ws_exec.close()
 
+    return data_recv
 
-@retry()
-def request_log_read_token():
+def run_command(wait_for_data=False):
+
     api_data = {
         "attachStdin": False,
         "attachStdout": True,
         "command": [
             "/bin/sh",
             "-c",
-            'cat /tmp/{rundeck_job_exec_id}.out'.format(rundeck_job_exec_id=rundeck_job_exec_id)
+            'echo $$ > {working_dir}/{rundeck_job_exec_id}.pid; \
+            date -u +%Y-%m-%dT%H:%M:%SZ > {working_dir}/{rundeck_job_exec_id}.out; \
+            echo -n "killed" > {working_dir}/{rundeck_job_exec_id}.status; \
+            {{ {bash_script} 2>&1 >> {working_dir}/{rundeck_job_exec_id}.out && echo -n "$?" >{working_dir}/{rundeck_job_exec_id}.status || echo -n "$?" >{working_dir}/{rundeck_job_exec_id}.status; }} | while read line;do echo "ERROR - $line" >> {working_dir}/{rundeck_job_exec_id}.out ;done'
+            #nohup {bash_script} 2> >(sed "s/^/ERROR - /g" >&2) >> {working_dir}/{rundeck_job_exec_id}.out; echo $? > {working_dir}/{rundeck_job_exec_id}.status'
+            #nohup {bash_script} >> {working_dir}/{rundeck_job_exec_id}.out 2>> {working_dir}/{rundeck_job_exec_id}.err'
+            .format(rundeck_job_exec_id=rundeck_job_exec_id, bash_script=bash_script, working_dir=working_dir)
         ],
         "tty": False
     }
-    api_url = "{}/containers/{}?action=execute".format(api_base_url, node_id)
-    api_res = requests.post(api_url, auth=api_auth, json=api_data)
-    api_res_json = api_res.json()
-    if not api_res.status_code < 300:
-        raise Exception("Can't read container logs, code \"{} ({})\"!".format(api_res_json['code'], api_res_json['status']))
-    return api_res_json
+
+    return use_token(request_token(api_data), wait_for_data)
+
+@retry(attempts=rundeck_retry_attempt, interval=rundeck_retry_interval)
+def check_pid():
+    api_data = {
+        "attachStdin": False,
+        "attachStdout": True,
+        "command": [
+            "/bin/sh",
+            "-c",
+            '/bin/kill -0 $(cat {working_dir}/{rundeck_job_exec_id}.pid) > /dev/null 2>&1; echo -n "$?"'
+
+            .format(rundeck_job_exec_id=rundeck_job_exec_id, working_dir=working_dir)
+        ],
+        "tty": False
+    }
+
+    try:
+        pid_check_result = use_token(request_token(api_data), wait_for_data=True)
+    except ValueError:
+        log("[ W ] Failed to read PID state:")
+        pid_check_result = -1
+    if pid_check_result == '0':
+        raise Exception(
+            "Process have not yet stopped "
+            "in container (PID state {})".format(pid_check_result))
+
+def get_log():
+    api_data = {
+        "attachStdin": False,
+        "attachStdout": True,
+        "command": [
+            "cat",
+            "{working_dir}/{rundeck_job_exec_id}.out"
+            .format(rundeck_job_exec_id=rundeck_job_exec_id, working_dir=working_dir)
+        ],
+        "tty": False
+    }
+
+    return use_token(request_token(api_data), True)
+
+def get_status():
+    api_data = {
+        "attachStdin": False,
+        "attachStdout": True,
+        "command": [
+            "cat",
+            "{working_dir}/{rundeck_job_exec_id}.status"
+            .format(rundeck_job_exec_id=rundeck_job_exec_id, working_dir=working_dir)
+        ],
+        "tty": False
+    }
+
+    status_code = use_token(request_token(api_data), True)
+
+    return int (status_code)
 
 
-@retry()
-def execute_read_final_logs():
-    final_logs_token = request_log_read_token()
-    ws_url_final_logs = "{}?token={}".format(final_logs_token['url'], final_logs_token['token'])
-    ws_logs = websocket.WebSocketApp(ws_url_final_logs,
-                                     on_message=logs_on_message,
-                                     header=ws_auth_header)
-    ws_logs.run_forever()
+log("-Starting job")
 
-
-def execute_on_message(ws, message):
-    message_text = base64.b64decode(message).strip()
-    parse_logs(message_text)
-
-log_chunks = []
-seen_logs_md5 = []
-def logs_on_message(ws, message):
-    message_text = base64.b64decode(message).strip()
-    log_chunks.append(message_text)
-
+#print os.environ
 
 # Read rundeck values
 bash_script = os.environ.get('RD_EXEC_COMMAND', '')
@@ -141,29 +163,37 @@ if container_info_res['state'] != 'running':
 
 # create an unique ID for this job execution
 rundeck_project = os.environ.get('RD_RUNDECK_PROJECT', '')
+check_os_env(rundeck_project, 'No RD_RUNDECK_PROJECT defined')
+
 rundeck_exec_id = os.environ.get('RD_JOB_EXECID', '')
-rundeck_retry_attempt = os.environ.get('RD_JOB_RETRYATTEMPT', '')
-if len(rundeck_project) == 0 or len(rundeck_exec_id) == 0:
-    raise Exception("Can't create run ID, RD_RUNDECK_PROJECT, RD_JOB_EXECID or RD_JOB_RETRYATTEMPT is not getting set by rundeck!")
+check_os_env(rundeck_exec_id, 'No RD_JOB_EXECID defined')
+
+#rundeck_retry_interval = os.environ.get('RD_JOB_RETRYINTERVAL', '')
+#check_os_env(rundeck_retry_interval, 'No RD_JOB_RETRYINTERVAL defined')
+
+#rundeck_retry_attempt = os.environ.get('RD_JOB_RETRYATTEMPT', '')
+#check_os_env(rundeck_retry_attempt, 'No RD_JOB_RETRYATTEMPT defined')
+
 m = hashlib.md5()
 m.update(bash_script)
 bash_script_md5 = m.hexdigest()
-rundeck_job_exec_id = "{}_{}_{}_{}".format(rundeck_project, rundeck_exec_id, rundeck_retry_attempt, bash_script_md5)
-log("[ I ] Rundeck job execution ID: {}".format(rundeck_job_exec_id))
+rundeck_job_exec_id = "rundeck_{}_{}_{}_{}".format(rundeck_project, rundeck_exec_id, rundeck_retry_attempt, bash_script_md5)
 
+#rundeck_job_exec_id = 'super'
 
+log("-Running your command : " +  rundeck_job_exec_id)
+run_command()
 
+log("\n-Waiting for the end...")
+check_pid()
 
+log("\n-Gathering logs...")
+print get_log()
 
-log("[ I ] Executing command...")
-execute_command()
-log("[ I ] Log listener disconnected...")
-log("[ I ] Reading PID status to check if still running...")
-execute_pid_check()
-log("[ I ] Command execution is done, reading remaining log output from container storage...")
-execute_read_final_logs()
-parse_logs(''.join(log_chunks))
+log("\n-Getting status...")
+return_code = get_status()
+print return_code
 
-if log_handler.has_error is True:
-    raise Exception(log_handler.last_error)
-log_handler.clear()
+log("\n-finish")
+
+sys.exit(return_code)

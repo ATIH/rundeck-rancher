@@ -1,10 +1,10 @@
 # yaml plugin metadata
 
 name: rancher-plugin
-version: 0.1
+version: 1.0
 rundeckPluginVersion: 1.2
-author: Klas Källqvist
-date: 2016-11-11
+author: Damien MURE - ATIH
+date: 2017-03-20
 providers:
     - name: rancher-resources
       title: Rancher container resource collector
@@ -12,10 +12,25 @@ providers:
       resource-format: resourcejson
       plugin-type: script
       script-interpreter: python
-      script-file: container-resource-model.py
+      script-file: container_resource_model.py
       config:
         - type: String
-          name: environment_id
+          name: cattle_config_url
+          title: Rancher API URL.
+          description: "Url the reach rancher API (ex: https://myrancher.me/v1)"
+          required: true
+        - type: String
+          name: cattle_access_key
+          title: Rancher acces key
+          description: API key needed to connect to Rancher API
+          required: true
+        - type: String
+          name: cattle_secret_key
+          title: Rancher secret key
+          description: Secret key associated to the acces key
+          required: true
+        - type: String
+          name: environments_ids
           title: Environment ID
           description: Enter the Rancher environment ID to use for filtering
           required: true
@@ -32,20 +47,35 @@ providers:
     - name: rancher-executor
       title: Rancher container script executor
       service: NodeExecutor
-      mergeEnvironment: true
       plugin-type: script
       script-interpreter: python
-      script-file: container-node-executor.py
+      script-file: container_node_executor.py
+      config:
+        - type: String
+          name: cattle_access_key
+          title: Rancher acces key
+          description: API key needed to connect to Rancher API
+          required: true
+        - type: String
+          name: cattle_secret_key
+          title: Rancher secret key
+          description: Secret key associated to the acces key
+          required: true
+        - type: String
+          name: cattle_config_url
+          title: Rancher API URL.
+          description: "Url the reach rancher API (ex: https://myrancher.me/v1)"
+          required: true
     - name: rancher-filecopy
       title: Rancher container file copier
       service: FileCopier
       plugin-type: script
       script-interpreter: python
-      script-file: container-copy-file.py
+      script-file: container_copy_file.py
       script-args: 1 2 3 # todo: remove
     - name: rancher-trigger-runonce
       title: Trigger Rancher run-once container
       service: WorkflowNodeStep
       plugin-type: script
       script-interpreter: python
-      script-file: container-runonce.py
+      script-file: container_runonce.py
