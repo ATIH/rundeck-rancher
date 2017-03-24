@@ -35,6 +35,7 @@ The goal here is to create a rundeck plugin able to :
 - Tested on Rundeck 2.6.11-1
 - Config and API keys specific to your Rancher installation.
 - `/bin/sh` need to be present in the container.
+- Python 2
 - Some python librairies installed on your rundeck server :
  - websocket-client (>=0.37.0)
  - requests (>=2.12.4)
@@ -42,9 +43,16 @@ The goal here is to create a rundeck plugin able to :
 (something like : apt-get install python-websocket python-requests python-dateutil)
 
 ### Installation
-- Download as `.zip` the `src` directory
-- Rename it as `rancher-plugin.zip`.
+- Create a `.zip` of the `src` directory. (root of the zip should be the `rancher-plugin` directory )
+- Name it as `rancher-plugin.zip`.
 - Place it in `$RDECK_BASE/libext/`.
+
+or with bash
+
+- Clone this reposiroty
+- Run `scripts/build-all.sh` (need `zip` in your PATH)
+- Copy the file `target/rancher-plugin.zip` to your rundeck serveur at `$RDECK_BASE/libext/`.
+
 
 ### Configuration
 - add a new `Resource Model Source` in your projet configuration : <br>

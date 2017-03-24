@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
 
-#   need package "p7zip-full" (on debian)
-
-
 GIT_ROOT="$(git rev-parse --show-toplevel)"
 
 BUILD_DEST="${GIT_ROOT}/target"
