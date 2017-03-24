@@ -20,7 +20,7 @@
 
 # Rundeck for Rancher
 
-This plugin is based on ["kallqvist/rundeck-rancher" work](https://github.com/kallqvist/rundeck-rancher).
+This plugin is based on ["kallqvist/rundeck-rancher" ](https://github.com/kallqvist/rundeck-rancher) work.
 
 The goal here is to create a rundeck plugin able to :
 - [x] Run with rundeck directly (running, or not, in a container).
@@ -49,7 +49,8 @@ The goal here is to create a rundeck plugin able to :
 ### Configuration
 - add a new `Resource Model Source` in your projet configuration : <br>
 (You need to adapte the source number "1" according to your project) configuration
- - `resources.source.1.type=rancher-resources`
+
+ - `resources.source.1.type=rancher-resources`<br>
  The rancher-plugin resources model definition.
 
  - `resources.source.1.config.cattle_access_key=0123456789AABBCCDDEE`<br>
@@ -59,7 +60,7 @@ The goal here is to create a rundeck plugin able to :
  Mind the "\" before ":"<br>
  You can use API v1 or v2-beta
 
- - `resources.source.1.config.cattle_secret_key=azertyuiopqsdfghjklmwxcvbn123456798000`
+ - `resources.source.1.config.cattle_secret_key=azertyuiopqsdfghjklmwxcvbn123456798000`<br>
  Your secret key to connect to the rancher API
 
  - `resources.source.1.config.environments_ids=1a11029,1a11070,1a11082`<br>
