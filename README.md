@@ -43,11 +43,10 @@ The goal here is to create a rundeck plugin able to :
 (something like : apt-get install python-websocket python-requests python-dateutil)
 
 ### Installation
-- Create a `.zip` of the `src` directory. (root of the zip should be the `rancher-plugin` directory )
-- Name it as `rancher-plugin.zip`.
+- Choose your release and download the `rancher-plugin.zip`
 - Place it in `$RDECK_BASE/libext/`.
 
-or with bash
+or build it (bash & zip needed)
 
 - Clone this reposiroty
 - Run `scripts/build-all.sh` (need `zip` in your PATH)
