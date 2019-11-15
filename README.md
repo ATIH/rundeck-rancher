@@ -1,5 +1,10 @@
 <!-- START doctoc generated TOC please keep comment here to allow auto update -->
 <!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
+
+
+DONT US ME. I'M DEPRECATED.
+IT'S A BAD WAY TO DO WHAT YOU WANT TO.
+
 **Table of Contents**  *generated with [DocToc](https://github.com/thlorenz/doctoc)*
 
 - [Rundeck for Rancher](#rundeck-for-rancher)
