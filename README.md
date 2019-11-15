@@ -2,8 +2,12 @@
 <!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
 
 
-DONT US ME. I'M DEPRECATED.
-IT'S A BAD WAY TO DO WHAT YOU WANT TO.
+DONT US ME.
+
+
+NOT MAINTAINED ANYMORE
+
+(follow forks if needed)
 
 **Table of Contents**  *generated with [DocToc](https://github.com/thlorenz/doctoc)*
 
